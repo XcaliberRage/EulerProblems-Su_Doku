@@ -10,20 +10,20 @@ use crate::ValueStatus::{Possible, Actual, Impossible};
 use crate::GridVector::{Row, Col};
 use std::pin::Pin;
 use std::ptr::NonNull;
+use std::collections::HashMap;
 
 // Solve 50 sudoku puzzles and sum the 3 digit answer in each top left
-const SUDOKU_CT: usize = 3;
+const SUDOKU_CT: usize = 1;
 const GRID_SIZE: usize = 9;
 const BOX_SIZE: usize = 3;
 const BOX_SIZE_I: u32 = BOX_SIZE as u32;
 const GRID_SIZE_I: u32 = GRID_SIZE as u32;
 
 #[derive(Debug, Clone, Copy)]
-struct Sudoku<'a> {
-    grid: Grid<'a>,
+struct Sudoku {
+    grid: Grid,
     solved: bool,
     name: u32,
-    definite_values: ValueList
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,9 +40,10 @@ struct ValueList {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Grid<'a> {
+struct Grid {
     grid: [[Cell; GRID_SIZE]; GRID_SIZE],
     solved_cell_ct: u32,
+    definite_values: ValueList,
 }
 
 #[derive(Debug, Clone, PartialEq, Copy)]
@@ -60,158 +61,100 @@ enum GridVector {
 }
 
 #[derive(Debug, Clone, Copy)]
+struct Coordinate {
+    x: u32,
+    y: u32,
+}
+
+#[derive(Debug, Clone, Copy)]
 struct Cell {
     defined: bool,
     value_as_int: u32,
-    one: ValueStatus,
-    two: ValueStatus,
-    three: ValueStatus,
-    four: ValueStatus,
-    five: ValueStatus,
-    six: ValueStatus,
-    seven: ValueStatus,
-    eight: ValueStatus,
-    nine: ValueStatus,
+    one: (ValueStatus, u32),
+    two: (ValueStatus, u32),
+    three: (ValueStatus, u32),
+    four: (ValueStatus, u32),
+    five: (ValueStatus, u32),
+    six: (ValueStatus, u32),
+    seven: (ValueStatus, u32),
+    eight: (ValueStatus, u32),
+    nine: (ValueStatus, u32),
+    coordinate: Coordinate,
 }
 
-struct SudokusCollection<'a> {
-    sudokus: [Sudoku<'a>; SUDOKU_CT],
+struct SudokusCollection {
+    sudokus: [Sudoku; SUDOKU_CT],
     solved: bool
 }
 
 impl Cell {
-    pub fn new(val: u32) -> std::result::Result<Cell, &'static str> {
+    pub fn new(val: u32, x: u32, y: u32) -> std::result::Result<Cell, &'static str> {
+
+        let mut cell = Cell {
+            defined: true,
+            value_as_int: val,
+            one: (Impossible, 1),
+            two: (Impossible, 2),
+            three: (Impossible, 3),
+            four: (Impossible, 4),
+            five: (Impossible, 5),
+            six: (Impossible, 6),
+            seven: (Impossible, 7),
+            eight: (Impossible, 8),
+            nine: (Impossible, 9),
+            coordinate: Coordinate {x, y}
+        };
+
         match val {
-            0 => Ok((Cell {
-                defined: false,
-                value_as_int: val,
-                one: Possible,
-                two: Possible,
-                three: Possible,
-                four: Possible,
-                five: Possible,
-                six: Possible,
-                seven: Possible,
-                eight: Possible,
-                nine: Possible,
-            })),
-            1 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Actual,
-                two: Impossible,
-                three: Impossible,
-                four: Impossible,
-                five: Impossible,
-                six: Impossible,
-                seven: Impossible,
-                eight: Impossible,
-                nine: Impossible,
-            })),
-            2 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Actual,
-                three: Impossible,
-                four: Impossible,
-                five: Impossible,
-                six: Impossible,
-                seven: Impossible,
-                eight: Impossible,
-                nine: Impossible,
-            })),
-            3 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Impossible,
-                three: Actual,
-                four: Impossible,
-                five: Impossible,
-                six: Impossible,
-                seven: Impossible,
-                eight: Impossible,
-                nine: Impossible,
-            })),
-            4 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Impossible,
-                three: Impossible,
-                four: Actual,
-                five: Impossible,
-                six: Impossible,
-                seven: Impossible,
-                eight: Impossible,
-                nine: Impossible,
-            })),
-            5 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Impossible,
-                three: Impossible,
-                four: Impossible,
-                five: Actual,
-                six: Impossible,
-                seven: Impossible,
-                eight: Impossible,
-                nine: Impossible,
-            })),
-            6 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Impossible,
-                three: Impossible,
-                four: Impossible,
-                five: Impossible,
-                six: Actual,
-                seven: Impossible,
-                eight: Impossible,
-                nine: Impossible,
-            })),
-            7 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Impossible,
-                three: Impossible,
-                four: Impossible,
-                five: Impossible,
-                six: Impossible,
-                seven: Actual,
-                eight: Impossible,
-                nine: Impossible,
-            })),
-            8 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Impossible,
-                three: Impossible,
-                four: Impossible,
-                five: Impossible,
-                six: Impossible,
-                seven: Impossible,
-                eight: Actual,
-                nine: Impossible,
-            })),
-            9 => Ok((Cell {
-                defined: true,
-                value_as_int: val,
-                one: Impossible,
-                two: Impossible,
-                three: Impossible,
-                four: Impossible,
-                five: Impossible,
-                six: Impossible,
-                seven: Impossible,
-                eight: Impossible,
-                nine: Actual,
-            })),
+            0 => {
+                cell.one.0 = ValueStatus::Possible;
+                cell.two.0 = ValueStatus::Possible;
+                cell.three.0 = ValueStatus::Possible;
+                cell.four.0 = ValueStatus::Possible;
+                cell.five.0 = ValueStatus::Possible;
+                cell.six.0 = ValueStatus::Possible;
+                cell.seven.0 = ValueStatus::Possible;
+                cell.eight.0 = ValueStatus::Possible;
+                cell.nine.0 = ValueStatus::Possible;
+                cell.defined = false;
+                return Ok((cell))
+            },
+            1 => {
+                cell.one.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            2 => {
+                cell.two.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            3 => {
+                cell.three.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            4 => {
+                cell.four.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            5 => {
+                cell.five.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            6 => {
+                cell.six.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            7 => {
+                cell.seven.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            8 => {
+                cell.eight.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
+            9 => {
+                cell.nine.0 = ValueStatus::Actual;
+                return Ok((cell))
+            },
             _ => Err("Can't make a cell with called value!"),
         }
     }
@@ -225,16 +168,16 @@ impl Cell {
             return Ok((self.value_as_int))
         }
 
-        if self.one == Impossible { impossibles += 1; };
-        if self.two == Impossible { impossibles += 1; };
-        if self.three == Impossible { impossibles += 1; };
-        if self.four == Impossible { impossibles += 1; };
-        if self.five == Impossible { impossibles += 1; };
-        if self.six == Impossible { impossibles += 1; };
-        if self.seven == Impossible { impossibles += 1; };
-        if self.eight == Impossible { impossibles += 1; };
-        if self.nine == Impossible { impossibles += 1; };
-        
+        if self.one.0 == Impossible { impossibles += 1; };
+        if self.two.0 == Impossible { impossibles += 1; };
+        if self.three.0 == Impossible { impossibles += 1; };
+        if self.four.0 == Impossible { impossibles += 1; };
+        if self.five.0 == Impossible { impossibles += 1; };
+        if self.six.0 == Impossible { impossibles += 1; };
+        if self.seven.0 == Impossible { impossibles += 1; };
+        if self.eight.0 == Impossible { impossibles += 1; };
+        if self.nine.0 == Impossible { impossibles += 1; };
+
         if impossibles >= GRID_SIZE_I {
             return Err(("All values marked as impossible!"))
         };
@@ -242,21 +185,95 @@ impl Cell {
     }
 
     pub fn set_impossible(&mut self, value: u32) {
+        println!("Setting value {} Impossible at {:?}, new status:", value, self.coordinate);
+        println!("{}", self);
+
         match value {
-            1 => self.one = ValueStatus::Impossible,
-            2 => self.two = ValueStatus::Impossible,
-            3 => self.three = ValueStatus::Impossible,
-            4 => self.four = ValueStatus::Impossible,
-            5 => self.five = ValueStatus::Impossible,
-            6 => self.six = ValueStatus::Impossible,
-            7 => self.seven = ValueStatus::Impossible,
-            8 => self.eight = ValueStatus::Impossible,
-            9 => self.nine = ValueStatus::Impossible,
+            1 => self.one.0 = ValueStatus::Impossible,
+            2 => self.two.0 = ValueStatus::Impossible,
+            3 => self.three.0 = ValueStatus::Impossible,
+            4 => self.four.0 = ValueStatus::Impossible,
+            5 => self.five.0 = ValueStatus::Impossible,
+            6 => self.six.0 = ValueStatus::Impossible,
+            7 => self.seven.0 = ValueStatus::Impossible,
+            8 => self.eight.0 = ValueStatus::Impossible,
+            9 => self.nine.0 = ValueStatus::Impossible,
             _ => {}
         }
+
+        self.check_guarantee();
+    }
+
+    pub fn check_guarantee(&mut self) {
+
+        if self.defined {
+            return;
+        }
+
+        let mut possible_ct: u32 = 0;
+        let mut last = &mut (ValueStatus::Actual, 0);
+
+        if self.one.0 == ValueStatus::Possible {
+            last = &mut self.one;
+        }
+        if self.two.0 == ValueStatus::Possible {
+            last = &mut self.two;
+        }
+        if self.three.0 == ValueStatus::Possible {
+            last = &mut self.three;
+        }
+        if self.four.0 == ValueStatus::Possible {
+            last = &mut self.four;
+        }
+        if self.five.0 == ValueStatus::Possible {
+            last = &mut self.five;
+        }
+        if self.six.0 == ValueStatus::Possible {
+            last = &mut self.six;
+        }
+        if self.seven.0 == ValueStatus::Possible {
+            last = &mut self.seven;
+        }
+        if self.eight.0 == ValueStatus::Possible {
+            last = &mut self.eight;
+        }
+        if self.nine.0 == ValueStatus::Possible {
+            last = &mut self.nine;
+        }
+
+        if possible_ct > 1 {
+            return
+        }
+
+        self.value_as_int = last.1;
+        println!("New guaranteed value ({}) determined at {:?}!",self.value_as_int ,self.coordinate);
+        last.0 = ValueStatus::Actual;
+        self.defined = true;
     }
 }
 
+impl Display for Cell {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "\
+        Defined: {}\n\
+        Value: {}\n\
+        {:?}\n\
+        Possibility:\n\
+            1: {:?}\n\
+            2: {:?}\n\
+            3: {:?}\n\
+            4: {:?}\n\
+            5: {:?}\n\
+            6: {:?}\n\
+            7: {:?}\n\
+            8: {:?}\n\
+            9: {:?}\n",
+        self.defined, self.value_as_int, self.coordinate,
+               self.one, self.two, self.three, self.four, self.five, self.six, self.seven, self.eight, self.nine)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
 struct Box {
     x: u32,
     y: u32,
@@ -289,11 +306,22 @@ impl Box {
     }
 }
 
-impl Grid<'_> {
-    pub fn new<'a>() -> Grid<'a> {
+impl Grid {
+    pub fn new() -> Grid {
         Grid {
-            grid: [[Cell::new(0).unwrap(); GRID_SIZE]; GRID_SIZE],
+            grid: [[Cell::new(0, 0, 0).unwrap(); GRID_SIZE]; GRID_SIZE],
             solved_cell_ct: 0,
+            definite_values: ValueList {
+                one: 0,
+                two: 0,
+                three: 0,
+                four: 0,
+                five: 0,
+                six: 0,
+                seven: 0,
+                eight: 0,
+                nine: 0
+            }
         }
     }
 
@@ -309,7 +337,7 @@ impl Grid<'_> {
         let y_u = y as usize;
         let x_u = x as usize;
 
-        if self.grid[x as usize][y as usize].defined {
+        if self.grid[x_u][y_u].defined {
             println!("Cell {},{} defined as {}", x, y, self.grid[x as usize][y as usize].value_as_int);
             return (possible, true)
         }
@@ -317,26 +345,26 @@ impl Grid<'_> {
         for index in 0..GRID_SIZE {
 
             if self.get_col(x).contains(&possible[index]) {
-                possible[index] = 0;
                 self.grid[x_u][y_u].set_impossible(possible[index]);
+                possible[index] = 0;
                 continue;
             }
 
             if self.get_row(y).contains(&possible[index]) {
-                possible[index] = 0;
                 self.grid[x_u][y_u].set_impossible(possible[index]);
+                possible[index] = 0;
                 continue;
             }
 
             if self.get_box(Box::new(x,y)).contains(&possible[index]) {
-                possible[index] = 0;
                 self.grid[x_u][y_u].set_impossible(possible[index]);
+                possible[index] = 0;
                 continue;
             }
 
         };
 
-        (possible, self.check_for_guarantees(x, y, &possible))
+        (possible, self.check_for_guarantees(x, y))
     }
 
     // Takes one value and determines possible placement within a specific neighbourhood (row, column or box)
@@ -390,36 +418,69 @@ impl Grid<'_> {
 
     // Checks to identify if there is only one possible value for the cell and sets it if so
     // Returns true if this is done
-    pub fn check_for_guarantees(&mut self, x: u32, y: u32, possible: &[u32; GRID_SIZE]) -> bool {
+    pub fn check_for_guarantees(&mut self, x: u32, y: u32) -> bool {
         let mut ct: u32= 0;
         let mut last_val = 0;
-        for poss in possible.iter() {
-            if *poss != 0 {
+
+        let possible = self.get_status_as_list(x as usize, y as usize);
+        for poss in possible {
+            if poss.0 == ValueStatus::Possible {
                 ct+= 1;
-                last_val = *poss;
+                last_val = poss.1;
             }
         }
         if ct == 1 {
             println!("Guaranteed value found at {}, {}: {}", x, y, last_val);
             self.set_value(x, y, last_val);
-            return true
+            return true;
         }
 
         return false
     }
 
+
+    // Returns a list of pointers to the ValueStatus of each possible value in the given cell
+    pub fn get_status_as_list(&self, x: usize, y: usize) -> [&(ValueStatus, u32); GRID_SIZE] {
+
+        [
+            &self.grid[x][y].one,
+            &self.grid[x][y].two,
+            &self.grid[x][y].three,
+            &self.grid[x][y].four,
+            &self.grid[x][y].five,
+            &self.grid[x][y].six,
+            &self.grid[x][y].seven,
+            &self.grid[x][y].eight,
+            &self.grid[x][y].nine,
+        ]
+
+    }
+
+    // Try to solve the Sudoku
     pub fn analyse(&mut self) {
-        for x in 0..GRID_SIZE_I {
-            for y in 0..GRID_SIZE_I {
-                if self.grid[x as usize][y as usize].defined {
+
+        'a: for x in 0..GRID_SIZE {
+            'b: for y in 0..GRID_SIZE {
+                if self.grid[x][y].defined {
+                    println!("{:?} is already {}", self.grid[x][y].coordinate,self.grid[x][y].value_as_int);
                     continue;
                 }
-                self.get_possibles_by_cell(x, y);
+                let poss = self.get_possibles_by_cell(x as u32, y as u32);
+                if poss.1 {
+                    continue;
+                }
+
+                // Sets possible and impossibles
+                for index in 0..GRID_SIZE {
+                    if poss.0[index] == 0 {
+                        self.grid[x][y].set_impossible(index as u32 + 1);
+                    }
+                }
             }
         }
 
         for number in 1..(GRID_SIZE_I+1) {
-            if *self.get_val_by_int(number) >= GRID_SIZE_I {
+            if self.get_val_by_int(number) >= GRID_SIZE_I {
                 continue;
             }
             for coord in 0..GRID_SIZE_I {
@@ -428,28 +489,49 @@ impl Grid<'_> {
                 self.get_possibles_by_neighbourhood(number, GridVector::Box, coord);
             }
         }
+
+        for row in 0..self.grid.len() {
+            for col in 0..self.grid[row].len() {
+                self.check_for_guarantees(col as u32, row as u32);
+            }
+        }
     }
 
-    pub fn get_val_by_int(&self, value: u32) -> &u32 {
+    pub fn inc_val_by_int<'a>(&mut self, value: u32) {
         match value {
-            1 => &self.sudoku.definite_values.one,
-            2 => &self.sudoku.definite_values.two,
-            3 => &self.sudoku.definite_values.three,
-            4 => &self.sudoku.definite_values.four,
-            5 => &self.sudoku.definite_values.five,
-            6 => &self.sudoku.definite_values.six,
-            7 => &self.sudoku.definite_values.seven,
-            8 => &self.sudoku.definite_values.eight,
-            9 => &self.sudoku.definite_values.nine,
-            _ => &1
+            1 => self.definite_values.one += 1,
+            2 => self.definite_values.two += 1,
+            3 => self.definite_values.three += 1,
+            4 => self.definite_values.four += 1,
+            5 => self.definite_values.five += 1,
+            6 => self.definite_values.six += 1,
+            7 => self.definite_values.seven += 1,
+            8 => self.definite_values.eight += 1,
+            9 => self.definite_values.nine += 1,
+            _ => {}
+        }
+    }
+
+    pub fn get_val_by_int<'a>(&mut self, value: u32) -> u32 {
+        match value {
+            1 => self.definite_values.one,
+            2 => self.definite_values.two,
+            3 => self.definite_values.three,
+            4 => self.definite_values.four,
+            5 => self.definite_values.five,
+            6 => self.definite_values.six,
+            7 => self.definite_values.seven,
+            8 => self.definite_values.eight,
+            9 => self.definite_values.nine,
+            _ => 0
         }
     }
 
     pub fn set_value(&mut self, x: u32, y: u32, value: u32) {
         println!("Setting cell {},{} as {}", x, y, value);
-        self.grid[x as usize][y as usize] = Cell::new(value).unwrap();
+        self.grid[x as usize][y as usize] = Cell::new(value, x, y).unwrap();
 
-        // TODO Increment each time a value is defined somewhere
+        self.inc_val_by_int(value);
     }
 
     pub fn get_solved(&mut self) -> u32 {
@@ -475,6 +557,7 @@ impl Grid<'_> {
                 continue;
             }
         };
+        println!("Col {} contains {:?}", x, numbers);
         numbers
     }
 
@@ -489,6 +572,7 @@ impl Grid<'_> {
                 continue;
             }
         };
+        println!("Row {} contains {:?}", y, numbers);
         numbers
     }
 
@@ -498,14 +582,14 @@ impl Grid<'_> {
             0..=2 => Ok((0)),
             3..=5 => Ok((3)),
             6..=8 => Ok((6)),
-            _ => Err(("X Co-ordinate given out of bounds")),
+            _ => Err(("X Co-ordinate ({}) given out of bounds", g_box.x)),
         };
 
         let top_row = match g_box.y {
             0..=2 => Ok((0)),
             3..=5 => Ok((3)),
             6..=8 => Ok((6)),
-            _ => Err(("X Co-ordinate given out of bounds")),
+            _ => Err(("Y Co-ordinate ({}) given out of bounds", g_box.y)),
         };
 
         let mut numbers: [u32; GRID_SIZE] = [0; GRID_SIZE];
@@ -519,27 +603,18 @@ impl Grid<'_> {
                 }
             }
         };
+
+        println!("{:?} contains {:?}", g_box, numbers);
         numbers
     }
 }
 
-impl Sudoku<'_> {
-    pub fn new<'a>(name: u32) -> Self<'a> {
+impl Sudoku {
+    pub fn new<'a>(name: u32) -> Self {
         Self {
             grid: Grid::new(),
             solved: false,
             name,
-            definite_values: ValueList {
-                one: 0,
-                two: 0,
-                three: 0,
-                four: 0,
-                five: 0,
-                six: 0,
-                seven: 0,
-                eight: 0,
-                nine: 0
-            }
         }
     }
 
@@ -556,7 +631,7 @@ impl Sudoku<'_> {
     }
 }
 
-impl SudokusCollection<'_> {
+impl SudokusCollection {
     pub fn new(collection: [Sudoku; SUDOKU_CT]) -> SudokusCollection {
         SudokusCollection {
             sudokus: collection,
@@ -583,8 +658,9 @@ impl SudokusCollection<'_> {
 
     pub fn analyse(&mut self) {
         let mut solved_all = true;
-        for sudoku in self.sudokus.iter_mut() {
+        for mut sudoku in self.sudokus {
             if !sudoku.solved {
+                println!("Analysing {}", sudoku.name);
                 sudoku.grid.analyse();
                 if solved_all {
                     solved_all = sudoku.check_solved();
@@ -592,6 +668,7 @@ impl SudokusCollection<'_> {
             }
         }
         self.solved = solved_all;
+
     }
 }
 
@@ -660,12 +737,14 @@ fn get_sudokus(file: &File) -> SudokusCollection {
         }
 
         for pos in 0..GRID_SIZE {
-            sudokus[sudoku_num].grid.grid[inner_line-1][pos] = Cell::new(line_as_string
+            let val = line_as_string
                 .get(pos..pos+1)
                 .unwrap()
                 .parse::<u32>()
-                .unwrap())
                 .unwrap();
+            let x = inner_line as u32 - 1;
+            let y = pos as u32;
+            sudokus[sudoku_num].grid.grid[inner_line-1][pos] = Cell::new(val, x, y).unwrap();
         }
         sudokus[sudoku_num].name = (sudoku_num + 1) as u32;
 
