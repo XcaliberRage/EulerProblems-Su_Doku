@@ -13,7 +13,7 @@ use std::ptr::NonNull;
 use std::collections::HashMap;
 
 // Solve 50 sudoku puzzles and sum the 3 digit answer in each top left
-const SUDOKU_CT: usize = 1;
+const SUDOKU_CT: usize = 2;
 const GRID_SIZE: usize = 9;
 const BOX_SIZE: usize = 3;
 const BOX_SIZE_I: u32 = BOX_SIZE as u32;
@@ -21,7 +21,7 @@ const GRID_SIZE_I: u32 = GRID_SIZE as u32;
 
 #[derive(Debug, Clone, Copy)]
 struct Sudoku {
-    grid: Grid,
+    grid: SudokuGrid,
     solved: bool,
     name: u32,
 }
@@ -40,8 +40,8 @@ struct ValueList {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Grid {
-    grid: [[Cell; GRID_SIZE]; GRID_SIZE],
+struct SudokuGrid {
+    grid: [[SudokuCell; GRID_SIZE]; GRID_SIZE],
     solved_cell_ct: u32,
     definite_values: ValueList,
 }
@@ -67,7 +67,7 @@ struct Coordinate {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Cell {
+struct SudokuCell {
     defined: bool,
     value_as_int: u32,
     one: (ValueStatus, u32),
@@ -87,10 +87,10 @@ struct SudokusCollection {
     solved: bool
 }
 
-impl Cell {
-    pub fn new(val: u32, x: u32, y: u32) -> std::result::Result<Cell, &'static str> {
+impl SudokuCell {
+    pub fn new(val: u32, x: u32, y: u32) -> SudokuCell {
 
-        let mut cell = Cell {
+        let mut cell = SudokuCell {
             defined: true,
             value_as_int: val,
             one: (Impossible, 1),
@@ -117,55 +117,55 @@ impl Cell {
                 cell.eight.0 = ValueStatus::Possible;
                 cell.nine.0 = ValueStatus::Possible;
                 cell.defined = false;
-                return Ok((cell))
+                return cell
             },
             1 => {
                 cell.one.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             2 => {
                 cell.two.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             3 => {
                 cell.three.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             4 => {
                 cell.four.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             5 => {
                 cell.five.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             6 => {
                 cell.six.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             7 => {
                 cell.seven.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             8 => {
                 cell.eight.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
             9 => {
                 cell.nine.0 = ValueStatus::Actual;
-                return Ok((cell))
+                return cell
             },
-            _ => Err("Can't make a cell with called value!"),
+            _ => panic!()
         }
     }
 
 
-    pub fn get_val(&self) -> std::result::Result<u32, &'static str> {
+    pub fn get_val(&self) -> u32 {
 
         let mut impossibles:u32 = 0;
 
         if self.defined {
-            return Ok((self.value_as_int))
+            return self.value_as_int
         }
 
         if self.one.0 == Impossible { impossibles += 1; };
@@ -179,14 +179,12 @@ impl Cell {
         if self.nine.0 == Impossible { impossibles += 1; };
 
         if impossibles >= GRID_SIZE_I {
-            return Err(("All values marked as impossible!"))
+            return panic!("All values marked as impossible!")
         };
-        Ok((0))
+        0
     }
 
     pub fn set_impossible(&mut self, value: u32) {
-        println!("Setting value {} Impossible at {:?}, new status:", value, self.coordinate);
-        println!("{}", self);
 
         match value {
             1 => self.one.0 = ValueStatus::Impossible,
@@ -200,8 +198,6 @@ impl Cell {
             9 => self.nine.0 = ValueStatus::Impossible,
             _ => {}
         }
-
-        self.check_guarantee();
     }
 
     pub fn check_guarantee(&mut self) {
@@ -215,30 +211,39 @@ impl Cell {
 
         if self.one.0 == ValueStatus::Possible {
             last = &mut self.one;
+            possible_ct += 1;
         }
         if self.two.0 == ValueStatus::Possible {
             last = &mut self.two;
+            possible_ct += 1;
         }
         if self.three.0 == ValueStatus::Possible {
             last = &mut self.three;
+            possible_ct += 1;
         }
         if self.four.0 == ValueStatus::Possible {
             last = &mut self.four;
+            possible_ct += 1;
         }
         if self.five.0 == ValueStatus::Possible {
             last = &mut self.five;
+            possible_ct += 1;
         }
         if self.six.0 == ValueStatus::Possible {
             last = &mut self.six;
+            possible_ct += 1;
         }
         if self.seven.0 == ValueStatus::Possible {
             last = &mut self.seven;
+            possible_ct += 1;
         }
         if self.eight.0 == ValueStatus::Possible {
             last = &mut self.eight;
+            possible_ct += 1;
         }
         if self.nine.0 == ValueStatus::Possible {
             last = &mut self.nine;
+            possible_ct += 1;
         }
 
         if possible_ct > 1 {
@@ -252,7 +257,7 @@ impl Cell {
     }
 }
 
-impl Display for Cell {
+impl Display for SudokuCell {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "\
         Defined: {}\n\
@@ -274,14 +279,14 @@ impl Display for Cell {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Box {
+struct SudokuBox {
     x: u32,
     y: u32,
 }
 
-impl Box {
-    pub fn new(x: u32, y: u32) -> Box {
-        Box {
+impl SudokuBox {
+    pub fn new(x: u32, y: u32) -> SudokuBox {
+        SudokuBox {
             x,
             y
         }
@@ -306,10 +311,10 @@ impl Box {
     }
 }
 
-impl Grid {
-    pub fn new() -> Grid {
-        Grid {
-            grid: [[Cell::new(0, 0, 0).unwrap(); GRID_SIZE]; GRID_SIZE],
+impl SudokuGrid {
+    pub fn new() -> SudokuGrid {
+        SudokuGrid {
+            grid: [[SudokuCell::new(0, 0, 0); GRID_SIZE]; GRID_SIZE],
             solved_cell_ct: 0,
             definite_values: ValueList {
                 one: 0,
@@ -326,45 +331,43 @@ impl Grid {
     }
 
     // Returns a pointer to the specified location
-    pub fn point_val(&mut self, x: u32, y: u32) -> &Cell {
+    pub fn point_val(&mut self, x: u32, y: u32) -> &SudokuCell {
         &self.grid[y as usize][x as usize]
     }
 
     // Looks at the given cell (by coordinate) and returns a tuple containing the list of possible values and an indicator
     // The indicator is true if only one value is possible
-    pub fn get_possibles_by_cell(&mut self, x: u32, y: u32) -> ([u32; GRID_SIZE], bool) {
+    // This list of possible values can be used to infer what
+    pub fn get_possibles_by_cell(&self, x: u32, y: u32) -> ([u32; GRID_SIZE], bool) {
         let mut possible: [u32; GRID_SIZE] = [1,2,3,4,5,6,7,8,9];
         let y_u = y as usize;
         let x_u = x as usize;
 
-        if self.grid[x_u][y_u].defined {
-            println!("Cell {},{} defined as {}", x, y, self.grid[x as usize][y as usize].value_as_int);
-            return (possible, true)
+        if self.grid[y_u][x_u].defined {
+            println!("Cell {},{} defined as {}", x, y, self.grid[y as usize][x as usize].value_as_int);
+            return ([0; GRID_SIZE], true)
         }
 
         for index in 0..GRID_SIZE {
-
             if self.get_col(x).contains(&possible[index]) {
-                self.grid[x_u][y_u].set_impossible(possible[index]);
                 possible[index] = 0;
                 continue;
             }
 
             if self.get_row(y).contains(&possible[index]) {
-                self.grid[x_u][y_u].set_impossible(possible[index]);
                 possible[index] = 0;
                 continue;
             }
 
-            if self.get_box(Box::new(x,y)).contains(&possible[index]) {
-                self.grid[x_u][y_u].set_impossible(possible[index]);
+            if self.get_box(SudokuBox::new(x, y)).contains(&possible[index]) {
                 possible[index] = 0;
                 continue;
             }
 
         };
+        println!("Possible values for cell {},{} : {:?}", x, y, possible);
 
-        (possible, self.check_for_guarantees(x, y))
+        (possible, false)
     }
 
     // Takes one value and determines possible placement within a specific neighbourhood (row, column or box)
@@ -375,7 +378,7 @@ impl Grid {
         let neighbourhood = match vector {
             GridVector::Col => self.get_col(coord),
             GridVector::Row => self.get_row(coord),
-            GridVector::Box => self.get_box(Box::new(Box::x_finder(coord), Box::y_finder(coord))),
+            GridVector::Box => self.get_box(SudokuBox::new(SudokuBox::x_finder(coord), SudokuBox::y_finder(coord))),
             _ => [0; GRID_SIZE]
         };
 
@@ -402,12 +405,12 @@ impl Grid {
                 }
             },
             GridVector::Box => {
-                let x_offset = Box::x_finder(coord) as usize;
-                let y_offset = Box::y_finder(coord) as usize;
+                let x_offset = SudokuBox::x_finder(coord) as usize;
+                let y_offset = SudokuBox::y_finder(coord) as usize;
 
                 for y in y_offset..(y_offset + BOX_SIZE) {
                     for x in x_offset..(x_offset + BOX_SIZE) {
-                        self.grid[x][y].set_impossible(value);
+                        self.grid[y][x].set_impossible(value);
                     }
                 }
             },
@@ -443,15 +446,15 @@ impl Grid {
     pub fn get_status_as_list(&self, x: usize, y: usize) -> [&(ValueStatus, u32); GRID_SIZE] {
 
         [
-            &self.grid[x][y].one,
-            &self.grid[x][y].two,
-            &self.grid[x][y].three,
-            &self.grid[x][y].four,
-            &self.grid[x][y].five,
-            &self.grid[x][y].six,
-            &self.grid[x][y].seven,
-            &self.grid[x][y].eight,
-            &self.grid[x][y].nine,
+            &self.grid[y][x].one,
+            &self.grid[y][x].two,
+            &self.grid[y][x].three,
+            &self.grid[y][x].four,
+            &self.grid[y][x].five,
+            &self.grid[y][x].six,
+            &self.grid[y][x].seven,
+            &self.grid[y][x].eight,
+            &self.grid[y][x].nine,
         ]
 
     }
@@ -459,30 +462,41 @@ impl Grid {
     // Try to solve the Sudoku
     pub fn analyse(&mut self) {
 
-        'a: for x in 0..GRID_SIZE {
-            'b: for y in 0..GRID_SIZE {
-                if self.grid[x][y].defined {
-                    println!("{:?} is already {}", self.grid[x][y].coordinate,self.grid[x][y].value_as_int);
+        'a: for y in 0..GRID_SIZE {
+            'b: for x in 0..GRID_SIZE {
+                if self.grid[y][x].defined {
+                    println!("{:?} is already {}", self.grid[y][x].coordinate,self.grid[y][x].value_as_int);
                     continue;
                 }
-                let poss = self.get_possibles_by_cell(x as u32, y as u32);
-                if poss.1 {
-                    continue;
-                }
-
-                // Sets possible and impossibles
-                for index in 0..GRID_SIZE {
-                    if poss.0[index] == 0 {
-                        self.grid[x][y].set_impossible(index as u32 + 1);
+                let u_x = x as u32;
+                let u_y = y as u32;
+                if !self.grid[y][x].defined {
+                    let poss = self.get_possibles_by_cell(u_x, u_y);
+                    if poss.1 {
+                        self.check_for_guarantees(u_x, u_y);
+                        continue;
                     }
+
+                    // Sets possible and impossibles
+                    for index in 0..GRID_SIZE {
+                        if poss.0[index] == 0 {
+                            self.grid[y][x].set_impossible(index as u32 + 1);
+                        }
+                    }
+                    println!("Updated cell status at {},{}:", x, y);
                 }
+                println!("Cell {},{} defined: {}({}).", x, y,self.grid[y][x].defined ,self.grid[y][x].value_as_int);
+                println!();
             }
         }
 
         for number in 1..(GRID_SIZE_I+1) {
+            println!("Checking neighbourhoods for value {}:", number);
             if self.get_val_by_int(number) >= GRID_SIZE_I {
+                println!("{} occurences of {} found, no need to check!", self.get_val_by_int(number), number);
                 continue;
             }
+            println!("{} occurences found...", self.get_val_by_int(number));
             for coord in 0..GRID_SIZE_I {
                 self.get_possibles_by_neighbourhood(number, GridVector::Row, coord);
                 self.get_possibles_by_neighbourhood(number, GridVector::Col, coord);
@@ -529,7 +543,9 @@ impl Grid {
 
     pub fn set_value(&mut self, x: u32, y: u32, value: u32) {
         println!("Setting cell {},{} as {}", x, y, value);
-        self.grid[x as usize][y as usize] = Cell::new(value, x, y).unwrap();
+        self.grid[y as usize][x as usize] = SudokuCell::new(value, x, y);
+        println!("New cell status:");
+        println!("{}", self.grid[y as usize][x as usize]);
 
         self.inc_val_by_int(value);
     }
@@ -551,13 +567,13 @@ impl Grid {
         let x_size = x as usize;
         let mut numbers: [u32; GRID_SIZE] = [0; GRID_SIZE];
         for row in 0..GRID_SIZE {
-            let value = &self.grid[x_size][row].value_as_int;
+            let value = &self.grid[row][x_size].value_as_int;
             if *value != 0 {
                 numbers[*value as usize - 1] = *value;
                 continue;
             }
         };
-        println!("Col {} contains {:?}", x, numbers);
+        //println!("Col {} contains {:?}", x, numbers);
         numbers
     }
 
@@ -566,37 +582,37 @@ impl Grid {
         let y_size = y as usize;
         let mut numbers: [u32; GRID_SIZE] = [0;GRID_SIZE];
         for col in 0..GRID_SIZE {
-            let value = &self.grid[col][y_size].get_val().unwrap();
+            let value = &self.grid[y_size][col].get_val();
             if *value != 0 {
                 numbers[*value as usize - 1] = *value;
                 continue;
             }
         };
-        println!("Row {} contains {:?}", y, numbers);
+        //println!("Row {} contains {:?}", y, numbers);
         numbers
     }
 
     // Returns all values found in the given box
-    fn get_box(&self, g_box: Box) -> [u32; GRID_SIZE] {
+    fn get_box(&self, g_box: SudokuBox) -> [u32; GRID_SIZE] {
         let left_col = match g_box.x {
-            0..=2 => Ok((0)),
-            3..=5 => Ok((3)),
-            6..=8 => Ok((6)),
-            _ => Err(("X Co-ordinate ({}) given out of bounds", g_box.x)),
+            0..=2 => 0,
+            3..=5 => 3,
+            6..=8 => 6,
+            _ => panic!("X Co-ordinate ({}) given out of bounds", g_box.x),
         };
 
         let top_row = match g_box.y {
-            0..=2 => Ok((0)),
-            3..=5 => Ok((3)),
-            6..=8 => Ok((6)),
-            _ => Err(("Y Co-ordinate ({}) given out of bounds", g_box.y)),
+            0..=2 => 0,
+            3..=5 => 3,
+            6..=8 => 6,
+            _ => panic!("Y Co-ordinate ({}) given out of bounds", g_box.y),
         };
 
         let mut numbers: [u32; GRID_SIZE] = [0; GRID_SIZE];
 
         for row in 0..3 {
             for col in 0..3 {
-                let val = &self.grid[col+left_col.unwrap()][row+top_row.unwrap()].get_val().unwrap();
+                let val = &self.grid[row+top_row][col+left_col].get_val();
                 if *val != 0 {
                     numbers[*val as usize - 1] = *val;
                     continue;
@@ -604,7 +620,7 @@ impl Grid {
             }
         };
 
-        println!("{:?} contains {:?}", g_box, numbers);
+        //println!("{:?} contains {:?}", g_box, numbers);
         numbers
     }
 }
@@ -612,7 +628,7 @@ impl Grid {
 impl Sudoku {
     pub fn new<'a>(name: u32) -> Self {
         Self {
-            grid: Grid::new(),
+            grid: SudokuGrid::new(),
             solved: false,
             name,
         }
@@ -648,9 +664,9 @@ impl SudokusCollection {
                 continue;
             }
 
-            println!("\nSudoku {}:", sudoku.name);
+            println!("\nSudoku {}: [Solved = {}]", sudoku.name, sudoku.solved);
             for line in sudoku.grid.grid.iter() {
-                let vals = line.iter().map(|c| c.get_val().unwrap()).collect::<Vec<u32>>();
+                let vals = line.iter().map(|c| c.get_val()).collect::<Vec<u32>>();
                 println!("{:?}", vals);
             }
         }
@@ -658,7 +674,7 @@ impl SudokusCollection {
 
     pub fn analyse(&mut self) {
         let mut solved_all = true;
-        for mut sudoku in self.sudokus {
+        for mut sudoku in self.sudokus.iter_mut() {
             if !sudoku.solved {
                 println!("Analysing {}", sudoku.name);
                 sudoku.grid.analyse();
@@ -668,6 +684,8 @@ impl SudokusCollection {
             }
         }
         self.solved = solved_all;
+        self.print("all");
+        println!("Sudoku solved: {}", self.solved);
 
     }
 }
@@ -684,19 +702,30 @@ fn main() -> std::io::Result<()> {
     sudokus.print("all");
     println!("Ready to solve?");
     stdin.read_line(&mut buffer).expect("Error reading");
+    let mut ct: u32 = 0;
 
     'main: while !sudokus.solved {
+        ct += 1;
         sudokus.print("unsolved");
         sudokus.analyse();
 
+        /*let mut cont = String::new();
         println!("Keep going? [Y/N]");
-        stdin.read_line(&mut buffer).expect("Failed to understand input");
-        if buffer.trim().to_lowercase() == "n" {
+        stdin.read_line(&mut cont).expect("Failed to understand input");
+        cont = cont.to_lowercase().trim().parse().unwrap();
+        println!("{} received... {}", cont, cont == "n");
+        if cont == "n" {
             break 'main;
+        }*/
+        let ct_max = 100;
+        if ct > ct_max {
+            panic!("Anti-infinity protection protocols activated! [currently set at {} passes]", ct_max)
         }
     }
 
+    println!("Sudokus solved = {}", sudokus.solved);
     sudokus.print("all");
+    println!("All sudokus solved in {} analyses", ct);
 
     Ok(())
 }
@@ -742,9 +771,12 @@ fn get_sudokus(file: &File) -> SudokusCollection {
                 .unwrap()
                 .parse::<u32>()
                 .unwrap();
-            let x = inner_line as u32 - 1;
-            let y = pos as u32;
-            sudokus[sudoku_num].grid.grid[inner_line-1][pos] = Cell::new(val, x, y).unwrap();
+            let y = inner_line as u32 - 1;
+            let x = pos as u32;
+            sudokus[sudoku_num].grid.grid[inner_line-1][pos] = SudokuCell::new(val, x, y);
+            if val > 0 {
+                sudokus[sudoku_num].grid.inc_val_by_int(val);
+            }
         }
         sudokus[sudoku_num].name = (sudoku_num + 1) as u32;
 
