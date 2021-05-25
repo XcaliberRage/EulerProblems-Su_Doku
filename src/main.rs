@@ -180,25 +180,25 @@ impl SudokuCell {
         if self.nine.0 == Impossible { impossibles += 1; };
 
         if impossibles >= GRID_SIZE_I {
-            return panic!("All values marked as impossible!")
+            return panic!("All values marked as impossible! {:?}", self.coordinate)
         };
         0
     }
 
     // Returns an array of the value statuses
-    pub fn get_val_stats_as_array(&self) -> [&(ValueStatus, u32); GRID_SIZE] {
+    pub fn get_val_stats_as_array(&self) -> Vec<(ValueStatus, u32)> {
 
-        let mut arr = [&(ValueStatus::Possible, 0); GRID_SIZE];
+        let mut arr = Vec::new();
 
-        arr[0] = &self.one;
-        arr[1] = &self.two;
-        arr[2] = &self.three;
-        arr[3] = &self.four;
-        arr[4] = &self.five;
-        arr[5] = &self.six;
-        arr[6] = &self.seven;
-        arr[7] = &self.eight;
-        arr[8] = &self.nine;
+        arr.push(self.one);
+        arr.push(self.two);
+        arr.push(self.three);
+        arr.push(self.four);
+        arr.push(self.five);
+        arr.push(self.six);
+        arr.push(self.seven);
+        arr.push(self.eight);
+        arr.push(self.nine);
 
         arr
             }
@@ -216,6 +216,10 @@ impl SudokuCell {
             8 => self.eight.0 = ValueStatus::Impossible,
             9 => self.nine.0 = ValueStatus::Impossible,
             _ => {}
+        }
+
+        if self.get_impossible().len() >= 9 {
+            panic!("All values in {:?} set to impossible! Was in processes of setting {}", self.coordinate, value);
         }
     }
 
@@ -335,14 +339,18 @@ impl Display for SudokuCell {
 #[derive(Debug, Clone, Copy)]
 struct SudokuBox {
     x: u32,
+    x_lim: u32,
     y: u32,
+    y_lim: u32
 }
 
 impl SudokuBox {
     pub fn new(x: u32, y: u32) -> SudokuBox {
         SudokuBox {
             x,
-            y
+            x_lim: x+2,
+            y,
+            y_lim: y+2,
         }
     }
 
@@ -362,6 +370,15 @@ impl SudokuBox {
             6..=8 => 6,
             _ => 0
         }
+    }
+
+    // Return true if the given cell is within the bounds of this box
+    pub fn in_box(&self, cell: SudokuCell) -> bool {
+        if cell.coordinate.x < self.x {return false;}
+        if cell.coordinate.x > self.x_lim {return false;}
+        if cell.coordinate.y < self.y {return false;}
+        if cell.coordinate.y > self.y_lim {return false;}
+        true
     }
 }
 
@@ -483,6 +500,9 @@ impl SudokuGrid {
 
                 for y in y_offset..(y_offset + BOX_SIZE) {
                     for x in x_offset..(x_offset + BOX_SIZE) {
+                        if self.grid[y][x].defined {
+                            continue;
+                        }
                         self.grid[y][x].set_impossible(value);
                     }
                 }
@@ -520,14 +540,25 @@ impl SudokuGrid {
                 
                 println!("Possible sibling found at {:?}: {:?}", cell.coordinate, poss_vals);
 
-                let mut cell_row = self.get_row(cell.coordinate.y);
-                let mut cell_col = self.get_col(cell.coordinate.x);
-                let mut cell_box = self.get_box(SudokuBox::new(cell.coordinate.x, cell.coordinate.y));
+                let mut cell_row = Vec::from(self.grid[cell.coordinate.y as usize]);
+                let mut cell_col = self.grid.iter().map(|c| c[cell.coordinate.x as usize]).collect::<Vec<SudokuCell>>();
+                let c_box = SudokuBox::new(cell.coordinate.x, cell.coordinate.y);
+                let mut cell_box = Vec::new();
+                for row in self.grid {
+                    for col in row {
+                        if c_box.in_box(col) {
+                            cell_box.push(col)
+                        }
+                    }
+                }
 
                 // Check neighbourhoods for similar cells
-                self.check_siblings(cell_row, cell, &mut poss_vals);
-                self.check_siblings(cell_col, cell, &mut poss_vals);
-                self.check_siblings(cell_box, cell, &mut poss_vals);
+                //println!("    Row: {:?}", cell_row.iter().map(|c| c.value_as_int).collect::<Vec<u32>>());
+                self.check_siblings(cell_row, cell, &poss_vals);
+                //println!("    Col: {:?}", cell_col.iter().map(|c| c.value_as_int).collect::<Vec<u32>>());
+                self.check_siblings(cell_col, cell, &poss_vals);
+                //println!("    Box: {:?}", cell_box.iter().map(|c| c.value_as_int).collect::<Vec<u32>>());
+                self.check_siblings(cell_box, cell, &poss_vals);
             }
         }
 
@@ -535,15 +566,12 @@ impl SudokuGrid {
     
     // Check the possibles cells in the given neighbourhood and if any pairs or triples are found
     // drop those possible values form the rest of the neighbourhood
-    pub fn check_siblings(&mut self, nbhd: [SudokuCell; GRID_SIZE], cell: SudokuCell, poss_vals: &mut Vec<&(ValueStatus, u32)>) {
+    pub fn check_siblings(&mut self, nbhd: Vec<SudokuCell>, cell: SudokuCell, poss_vals: &Vec<(ValueStatus, u32)>) {
 
-        // TODO Something is wiping the coordinates, which means things are ont working correctly
-        for i in nbhd {
-            println!("    {:?}",i);
-        }
-
+        // The neighbourhood trimmed down to only those cells that aren't defined
         let mut nbhd_poss = self.return_poss(nbhd);
-        let poss_len = poss_vals.len();
+        // Number of possible values in this siblingdom
+        let mut poss_len = poss_vals.len();
         
         // Drop the cell we're looking at from this neighbourhood
         'nbd: for index in 0..nbhd_poss.len() {
@@ -551,20 +579,23 @@ impl SudokuGrid {
                 nbhd_poss.remove(index);
                 break 'nbd;
             }
-
-
         }
 
+
+        // Drop any cell that has something other than 2 or 3 possibles
+        // (we might have some with 1 possible since we last checked for gurantees)
         let mut index = 0;
         while index < nbhd_poss.len() {
-            let length = nbhd_poss[index].get_val_stats_as_array().len() ;
-            /*if length != 2 || length != 3 {
+            let nbhd_poss_this = nbhd_poss[index].get_val_stats_as_array()
+                .iter().filter_map(|&c| if c.0 == Possible {Some(c)} else {None}).collect::<Vec<(ValueStatus, u32)>>();
+            let length = nbhd_poss_this.len();
+            if length != 2 && length != 3 {
                 nbhd_poss.remove(index);
                 continue;
-            }*/
-            //println!("    {:?}", nbhd_poss[index]);
+            }
             index += 1;
         }
+        //println!("        Looking for possible siblings: {:?}", nbhd_poss.iter().map(|c| (c.coordinate, c.value_as_int)).collect::<Vec<(Coordinate, u32)>>());
 
         // Count matches between poss_vals and each [nbhd]_poss
         // If == we either have a pair or need to find a third cell
@@ -580,7 +611,7 @@ impl SudokuGrid {
                 .iter()
                 .filter_map(|c| if c.0 == Possible {Some(c)} else {None})
                 .map(|a| *a)
-                .collect::<Vec<&(ValueStatus, u32)>>();
+                .collect::<Vec<(ValueStatus, u32)>>();
 
             // Compare the two cells to see if they are siblings
             // (they both have got to have exactly 2 or 3 possibles and be identical)
@@ -588,6 +619,7 @@ impl SudokuGrid {
                 .zip(t.clone())
                 .filter(|(a,b)| a.1 == b.1)
                 .count();
+
             if  !(matching == poss_len && matching == t.len()) {
                 continue;
             }
@@ -611,14 +643,40 @@ impl SudokuGrid {
             looking_for_third = true;
 
         }
+
+        //println!("Siblings found: {:?}", sibling_cells);
         
         // If we didn't find any siblings then move on
         if sibling_cells.is_empty() {
             return;
         }
 
-        println!("All siblings found: {:?}", sibling_cells);
-        
+        // We also need to skip if we found a broken sibling (3 possibles but only 2 matching cells)
+        if sibling_cells.len() != poss_len {
+            return;
+        }
+
+        println!("All siblings found for {:?}: {:?}", poss_vals ,sibling_cells.iter().map(|c| c.coordinate).collect::<Vec<Coordinate>>());
+
+        // Lets drop the other siblings from nbhd_poss
+        for cell in &sibling_cells {
+            let mut index = 0 as usize;
+            let mut nbhd_len = nbhd_poss.len();
+            while index < nbhd_len {
+                if cell.coordinate.y == nbhd_poss[index].coordinate.y && cell.coordinate.x == nbhd_poss[index].coordinate.x {
+                    nbhd_poss.remove(index);
+                    nbhd_len = nbhd_poss.len();
+                    continue;
+                }
+                index += 1;
+            }
+        }
+
+        println!("Cells {:?} will have the sibling set {:?} set to impossible",
+                 nbhd_poss.iter()
+                     .map(|c| c.coordinate).collect::<Vec<Coordinate>>(),
+                 poss_vals);
+
         // If we did, we want to set the possible values of these siblings in each OTHER cell in the neighbourhood to impossible
         'set_nbhd: for col_cell in &nbhd_poss {
             for sibling in &mut sibling_cells {
@@ -626,28 +684,30 @@ impl SudokuGrid {
                 if equal_coords(sibling.coordinate, col_cell.coordinate) {
                     continue 'set_nbhd;
                 }
+            }
                 
-                for val in poss_vals.iter_mut() {
-                    let y = col_cell.coordinate.y as usize;
-                    let x = col_cell.coordinate.x as usize;
-                    self.grid[y][x] = SudokuCell::new(col_cell.value_as_int, col_cell.coordinate.x, col_cell.coordinate.y);
-                    let mut cell = &mut self.grid[y][x];
+            for val in poss_vals.iter() {
+                let y = col_cell.coordinate.y as usize;
+                let x = col_cell.coordinate.x as usize;
+                self.grid[y][x] = SudokuCell::new(col_cell.value_as_int, col_cell.coordinate.x, col_cell.coordinate.y);
+                let mut cell = &mut self.grid[y][x];
 
-                    let mut imposs = col_cell.get_impossible();
-                    imposs.push(val.1);
+                // This is a little awkward but due to lifetimes I essentially remake the cell
+                let mut imposs = col_cell.get_impossible();
+                imposs.push(val.1);
 
-                    for impossible in imposs {
-                        cell.set_impossible(impossible);
-                    }
+                for impossible in imposs {
+                    cell.set_impossible(impossible);
                 }
             }
+
         }
 
-        println!("Neighbourhood updated: {:?}", nbhd_poss);
+        //println!("Neighbourhood updated: {:?}", nbhd_poss);
     }
 
     // Returns a vector of each cell from the given neighbourhood that is not defined
-    pub fn return_poss(&self, nbhd: [SudokuCell; GRID_SIZE]) -> Vec<SudokuCell> {
+    pub fn return_poss(&self, nbhd: Vec<SudokuCell>) -> Vec<SudokuCell> {
 
         let mut vec = Vec::new();
 
@@ -707,7 +767,7 @@ impl SudokuGrid {
         'a: for y in 0..GRID_SIZE {
             'b: for x in 0..GRID_SIZE {
                 if self.grid[y][x].defined {
-                    println!("{:?} is already {}", self.grid[y][x].coordinate,self.grid[y][x].value_as_int);
+                    //println!("{:?} is already {}", self.grid[y][x].coordinate,self.grid[y][x].value_as_int);
                     continue;
                 }
                 let u_x = x as u32;
@@ -726,18 +786,18 @@ impl SudokuGrid {
                         }
                     }
                 }
-                println!("Cell {},{} defined: {}({}).", x, y,self.grid[y][x].defined ,self.grid[y][x].value_as_int);
+                //println!("Cell {},{} defined: {}({}).", x, y,self.grid[y][x].defined ,self.grid[y][x].value_as_int);
             }
         }
 
         // Next are neighbourhood checks against a specific value, assigning any guaranteed values
         for number in 1..(GRID_SIZE_I+1) {
-            println!("Checking neighbourhoods for value {}:", number);
+            //println!("Checking neighbourhoods for value {}:", number);
             if self.get_val_by_int(number) >= GRID_SIZE_I {
                 println!("{} occurences of {} found, no need to check!", self.get_val_by_int(number), number);
                 continue;
             }
-            println!("{} occurences found...", self.get_val_by_int(number));
+            //println!("{} occurences found...", self.get_val_by_int(number));
             for coord in 0..GRID_SIZE_I {
                 self.get_possibles_by_neighbourhood(number, GridVector::Row, coord);
                 self.get_possibles_by_neighbourhood(number, GridVector::Col, coord);
@@ -797,6 +857,21 @@ impl SudokuGrid {
         println!("New cell status:");
         println!("{}", self.grid[y as usize][x as usize]);
 
+        for mut row in self.grid[y as usize] {
+            if row.defined {
+                continue
+            }
+
+            row.set_impossible(value);
+        }
+        for mut col in self.grid {
+            if col[y as usize].defined {
+                continue
+            }
+
+            col[y as usize].set_impossible((value));
+        }
+
         self.inc_val_by_int(value);
     }
 
@@ -813,37 +888,37 @@ impl SudokuGrid {
     }
 
     // Returns all values found in the given column
-    fn get_col(&self, x: u32) -> [SudokuCell; GRID_SIZE] {
+    fn get_col(&self, x: u32) -> Vec<SudokuCell> {
         let x_size = x as usize;
-        let mut numbers: [SudokuCell; GRID_SIZE] = [SudokuCell::new(0,0,0); GRID_SIZE];
+        let mut numbers= Vec::new();
         for row in 0..GRID_SIZE {
             let cell = self.grid[row][x_size];
             if cell.value_as_int != 0 {
-                numbers[cell.value_as_int as usize - 1] = cell;
+                numbers.push(cell);
                 continue;
             }
         };
-        //println!("Col {} contains {:?}", x, numbers);
+        //println!("Col {} contains {:?}", x, numbers.iter().map(|c| c.value_as_int).collect::<Vec<u32>>());
         numbers
     }
 
     // Returns all values found in the given row
-    fn get_row(&self, y: u32) -> [SudokuCell; GRID_SIZE] {
+    fn get_row(&self, y: u32) -> Vec<SudokuCell> {
         let y_size = y as usize;
-        let mut numbers: [SudokuCell; GRID_SIZE] = [SudokuCell::new(0,0,0); GRID_SIZE];
+        let mut numbers = Vec::new();
         for col in 0..GRID_SIZE {
             let cell = self.grid[y_size][col];
             if cell.value_as_int != 0 {
-                numbers[cell.value_as_int as usize - 1] = cell;
+                numbers.push(cell);
                 continue;
             }
         };
-        //println!("Row {} contains {:?}", y, numbers);
+        //println!("Row {} contains {:?}", y, numbers.iter().map(|c| c.value_as_int).collect::<Vec<u32>>());
         numbers
     }
 
     // Returns all values found in the given box
-    fn get_box(&self, g_box: SudokuBox) -> [SudokuCell; GRID_SIZE] {
+    fn get_box(&self, g_box: SudokuBox) -> Vec<SudokuCell> {
         let left_col = match g_box.x {
             0..=2 => 0,
             3..=5 => 3,
@@ -858,19 +933,19 @@ impl SudokuGrid {
             _ => panic!("Y Co-ordinate ({}) given out of bounds", g_box.y),
         };
 
-        let mut numbers: [SudokuCell; GRID_SIZE] = [SudokuCell::new(0, 0, 0); GRID_SIZE];
+        let mut numbers = Vec::new();
 
         for row in 0..3 {
             for col in 0..3 {
                 let cell = self.grid[row+top_row][col+left_col];
                 if cell.value_as_int != 0 {
-                    numbers[cell.value_as_int as usize - 1] = cell;
+                    numbers.push(cell);
                     continue;
                 }
             }
         };
 
-        //println!("{:?} contains {:?}", g_box, numbers);
+        //println!("{:?} contains {:?}", g_box, numbers.iter().map(|c| c.value_as_int).collect::<Vec<u32>>());
         numbers
     }
 }
