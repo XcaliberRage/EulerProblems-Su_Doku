@@ -15,6 +15,8 @@ use std::collections::HashMap;
 
 // Solve 50 sudoku puzzles and sum the 3 digit answer in each top left
 const SUDOKU_CT: usize = 1;
+const SUDOKU_START: usize = 2;
+const SUDOKU_END: usize = SUDOKU_CT * (10 * SUDOKU_START) - 1;
 const GRID_SIZE: usize = 9;
 const BOX_SIZE: usize = 3;
 const BOX_SIZE_I: u32 = BOX_SIZE as u32;
@@ -62,13 +64,13 @@ enum GridVector {
     Cel,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Coordinate {
     x: u32,
     y: u32,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct SudokuCell {
     defined: bool,
     value_as_int: u32,
@@ -85,7 +87,7 @@ struct SudokuCell {
 }
 
 struct SudokusCollection {
-    sudokus: [Sudoku; SUDOKU_CT],
+    sudokus: Vec<Sudoku>,
     solved: bool
 }
 
@@ -204,7 +206,9 @@ impl SudokuCell {
         arr
             }
 
-    pub fn set_impossible(&mut self, value: u32) {
+    pub fn set_impossible(&mut self, value: u32) -> (bool, u32) {
+
+        println!("        Set {} as impossible in {:?}.", value, self.coordinate);
 
         match value {
             1 => self.one.0 = ValueStatus::Impossible,
@@ -219,9 +223,17 @@ impl SudokuCell {
             _ => {}
         }
 
+        let poss = self.get_possible();
+        if poss.len() == 1 {
+            println!("Only one possible value left!");
+            return (true, poss[0]);
+        }
+
         if self.get_impossible().len() >= 9 {
             panic!("All values in {:?} set to impossible! Was in processes of setting {}", self.coordinate, value);
         }
+
+        (false, 0)
     }
 
     pub fn get_impossible(&self) -> Vec<u32> {
@@ -314,6 +326,42 @@ impl SudokuCell {
         last.0 = ValueStatus::Actual;
         self.defined = true;
     }
+
+    // Returns a list of all possible ints for this cell
+    fn get_possible(&self) -> Vec<u32> {
+
+        let mut possibles = Vec::new();
+
+        if self.one.0 == Possible {
+            possibles.push(self.one.1);
+        }
+        if self.two.0 == Possible {
+            possibles.push(self.two.1);
+        }
+        if self.three.0 == Possible {
+            possibles.push(self.three.1);
+        }
+        if self.four.0 == Possible {
+            possibles.push(self.four.1);
+        }
+        if self.five.0 == Possible {
+            possibles.push(self.five.1);
+        }
+        if self.six.0 == Possible {
+            possibles.push(self.six.1);
+        }
+        if self.seven.0 == Possible {
+            possibles.push(self.seven.1);
+        }
+        if self.eight.0 == Possible {
+            possibles.push(self.eight.1);
+        }
+        if self.nine.0 == Possible {
+            possibles.push(self.nine.1);
+        }
+
+        possibles
+    }
 }
 
 impl Display for SudokuCell {
@@ -342,16 +390,30 @@ struct SudokuBox {
     x: u32,
     x_lim: u32,
     y: u32,
-    y_lim: u32
+    y_lim: u32,
+    content: Vec<Vec<SudokuCell>>
 }
 
 impl SudokuBox {
-    pub fn new(x: u32, y: u32) -> SudokuBox {
+    pub fn new(x: u32, y: u32, grid: SudokuGrid) -> SudokuBox {
+
+        let mut g_box = Vec::new();
+
+        for i_y in 0..3 {
+            let mut g_row = Vec::new();
+            for i_x in 0..3 {
+                g_row.push(grid.grid[y + i_y][i_x + x]);
+            }
+            g_box.push(g_row);
+        }
+
+
         SudokuBox {
             x,
             x_lim: x+2,
             y,
             y_lim: y+2,
+            content: g_box
         }
     }
 
@@ -384,6 +446,19 @@ impl SudokuBox {
         }
     }
 
+    pub fn get_vals(&self) -> Vec<u32> {
+
+        let mut values = Vec::new();
+
+        for y in self.content {
+            for x in y {
+                values.push(x.value_as_int);
+            }
+        }
+
+        values
+    }
+
     // Return true if the given cell is within the bounds of this box
     pub fn in_box(&self, cell: SudokuCell) -> bool {
         if cell.coordinate.x < self.x {return false;}
@@ -391,6 +466,28 @@ impl SudokuBox {
         if cell.coordinate.y < self.y {return false;}
         if cell.coordinate.y > self.y_lim {return false;}
         true
+    }
+
+    pub fn get_cols(&self, grid: &SudokuGrid) -> Vec<Vec<u32>> {
+
+        let mut column = Vec::new();
+
+        for col_v in self.x..(self.x_lim+1) {
+            column.push(grid.collect_values(grid.get_col(col_v)));
+        }
+
+        column
+    }
+
+    pub fn get_rows(&self, grid: &SudokuGrid) -> Vec<Vec<u32>> {
+
+        let mut row = Vec::new();
+
+        for row_v in self.y..(self.y_lim+1) {
+            row.push(grid.collect_values(grid.get_row(row_v)));
+        }
+
+        row
     }
 }
 
@@ -440,7 +537,7 @@ impl SudokuGrid {
     // Looks at the given cell (by coordinate) and returns a tuple containing the list of possible values and an indicator
     // The indicator is true if only one value is possible
     // This list of possible values can be used to infer what
-    pub fn get_possibles_by_cell(&self, x: u32, y: u32) -> (Vec<u32>, bool) {
+    pub fn get_possibles_by_cell(&mut self, x: u32, y: u32) -> (Vec<u32>, bool) {
         let mut possible = Vec::new();
         let y_u = y as usize;
         let x_u = x as usize;
@@ -459,7 +556,7 @@ impl SudokuGrid {
                 .into_iter()
                 .map(|n| n.value_as_int)
                 .collect::<Vec<u32>>();
-        let bx = self.get_box(SudokuBox::new(SudokuBox::coord_translator(x), SudokuBox::coord_translator(y)))
+        let bx = self.get_box(SudokuBox::new(SudokuBox::coord_translator(x), SudokuBox::coord_translator(y), *self))
                 .into_iter()
                 .map(|n| n.value_as_int)
                 .collect::<Vec<u32>>();
@@ -512,6 +609,23 @@ impl SudokuGrid {
             return (possible, true);
         }
 
+        for n in 0..GRID_SIZE_I {
+            let i = n+1;
+
+            if possible.contains(&i) {
+                continue;
+            }
+
+            if self.grid[y_u][x_u].get_impossible().contains(&i) {
+                continue;
+            }
+
+            let p = self.grid[y_u][x_u].set_impossible(i);
+            if p.0 {
+                self.set_value(x, y, p.1);
+            }
+        }
+
         println!("    Multiple possibilities found at {:?}: {:?}", self.grid[y_u][x_u].coordinate, possible);
         (possible, false)
     }
@@ -524,7 +638,7 @@ impl SudokuGrid {
         let neighbourhood = match vector {
             GridVector::Col => self.get_col(coord),
             GridVector::Row => self.get_row(coord),
-            GridVector::Box => self.get_box(SudokuBox::new(SudokuBox::x_finder(coord), SudokuBox::y_finder(coord))),
+            GridVector::Box => self.get_box(SudokuBox::new(SudokuBox::x_finder(coord), SudokuBox::y_finder(coord), *self)),
             _ => panic!("Attempted to give non-vector where a vector was required!")
         };
 
@@ -545,7 +659,11 @@ impl SudokuGrid {
                     if self.grid[i][coord_u].defined {
                         continue;
                     }
-                    self.grid[i][coord_u].set_impossible(value);
+                    let p = self.grid[i][coord_u].set_impossible(value);
+
+                    if p.0 {
+                        self.set_value(coord, i as u32, p.1);
+                    }
                 }
             },
             GridVector::Row => {
@@ -553,7 +671,12 @@ impl SudokuGrid {
                     if self.grid[coord_u][i].defined {
                         continue;
                     }
-                    self.grid[coord_u][i].set_impossible(value);
+
+                    let p = self.grid[coord_u][i].set_impossible(value);
+
+                    if p.0 {
+                        self.set_value(i as u32, coord, p.1);
+                    }
                 }
             },
             GridVector::Box => {
@@ -565,7 +688,11 @@ impl SudokuGrid {
                         if self.grid[y][x].defined {
                             continue;
                         }
-                        self.grid[y][x].set_impossible(value);
+                        let p = self.grid[y][x].set_impossible(value);
+
+                        if p.0 {
+                            self.set_value(x as u32, y as u32, p.1);
+                        }
                     }
                 }
             },
@@ -604,7 +731,7 @@ impl SudokuGrid {
 
                 let mut cell_row = Vec::from(self.grid[cell.coordinate.y as usize]);
                 let mut cell_col = self.grid.iter().map(|c| c[cell.coordinate.x as usize]).collect::<Vec<SudokuCell>>();
-                let c_box = SudokuBox::new(SudokuBox::x_finder(cell.coordinate.x), SudokuBox::y_finder(cell.coordinate.y));
+                let c_box = SudokuBox::new(SudokuBox::x_finder(cell.coordinate.x), SudokuBox::y_finder(cell.coordinate.y), *self);
                 let mut cell_box = Vec::new();
                 'box_check: for row in self.grid {
                     for col in row {
@@ -756,14 +883,18 @@ impl SudokuGrid {
                 let y = col_cell.coordinate.y as usize;
                 let x = col_cell.coordinate.x as usize;
                 self.grid[y][x] = SudokuCell::new(col_cell.value_as_int, col_cell.coordinate.x, col_cell.coordinate.y);
-                let mut cell = &mut self.grid[y][x];
+                let mut cell = self.grid[y][x];
 
                 // This is a little awkward but due to lifetimes I essentially remake the cell
                 let mut imposs = col_cell.get_impossible();
                 imposs.push(val.1);
 
                 for impossible in imposs {
-                    cell.set_impossible(impossible);
+                    let p = cell.set_impossible(impossible);
+
+                    if p.0 {
+                        self.set_value(cell.coordinate.x, cell.coordinate.y, p.1);
+                    }
                 }
             }
 
@@ -834,16 +965,12 @@ impl SudokuGrid {
         // Next are neighbourhood checks against a specific value, assigning any guaranteed values
         for number in 1..(GRID_SIZE_I+1) {
             //println!("Checking neighbourhoods for value {}:", number);
-            if self.get_val_by_int(number) >= GRID_SIZE_I {
+            if self.get_val_by_int(number) == GRID_SIZE_I {
                 println!("{} occurences of {} found, no need to check!", self.get_val_by_int(number), number);
                 continue;
             }
-            //println!("{} occurences found...", self.get_val_by_int(number));
-            for coord in 0..GRID_SIZE_I {
-                self.get_possibles_by_neighbourhood(number, GridVector::Row, coord);
-                self.get_possibles_by_neighbourhood(number, GridVector::Col, coord);
-                self.get_possibles_by_neighbourhood(number, GridVector::Box, coord);
-            }
+
+            self.solve_for_number(number);
         }
 
         if self.check_each() {
@@ -919,20 +1046,44 @@ impl SudokuGrid {
         println!("New cell status:");
         println!("{}", self.grid[y as usize][x as usize]);
 
-        for mut row in self.grid[y as usize] {
-            if row.defined {
-                continue
+        let bx = self.get_box(SudokuBox::new(SudokuBox::coord_translator(x), SudokuBox::coord_translator(y), *self));
+
+        for mut i in bx.iter() {
+            if i.defined {
+                continue;
             }
 
-            row.set_impossible(value);
+            let p = self.grid[i.coordinate.y as usize][i.coordinate.x as usize].set_impossible(value);
+
+            if p.0 {
+                self.set_value(i.coordinate.x, i.coordinate.y, p.1);
+            }
+        }
+
+        for mut row in self.grid[y as usize] {
+            if row.defined || bx.contains(&row){
+                continue;
+            }
+
+            let p = row.set_impossible(value);
+
+            if p.0 {
+                self.set_value(row.coordinate.x, row.coordinate.y, p.1);
+            }
         }
         for mut col in self.grid {
-            if col[y as usize].defined {
-                continue
+            if col[x as usize].defined || bx.contains(&col[x as usize]) {
+                continue;
             }
 
-            col[y as usize].set_impossible((value));
+            let p = col[x as usize].set_impossible(value);
+
+            if p.0 {
+                self.set_value(col[x as usize].coordinate.x, col[x as usize].coordinate.y, p.1);
+            }
         }
+
+
 
         self.inc_val_by_int(value);
     }
@@ -1010,6 +1161,62 @@ impl SudokuGrid {
         //println!("{:?} contains {:?}", g_box, numbers.iter().map(|c| c.value_as_int).collect::<Vec<u32>>());
         numbers
     }
+
+    // Step through the grid trying to find placements for a specific number
+    // Specifically looking at if the cell, row, column relationship forces a placement of that number
+    // If a change is found, return true
+    pub fn solve_for_number(&mut self, number: u32) -> bool {
+
+        println!(" - - - - - Solving for {}:", number);
+        println!("Current number ct = {}", self.get_def_val_ct()[(number - 1) as usize]);
+        let mut changed = false;
+
+        for row in self.grid {
+            for cell in row {
+
+                if self.get_def_val_ct()[(number -1) as usize] == GRID_SIZE_I {
+                    println!("Number {} has completed all placements", number);
+                    return changed;
+                }
+
+                if cell.defined {
+                    continue;
+                }
+
+                let nbhd_col = self.collect_values(self.get_col(cell.coordinate.x));
+                let nbhd_row = self.collect_values(self.get_row(cell.coordinate.y));
+                let nbhd_box = SudokuBox::new(SudokuBox::x_finder(cell.coordinate.x), SudokuBox::y_finder(cell.coordinate.y), *self);
+                let nbhd_box_vals = nbhd_box.get_vals();
+
+                // Skip if this number can't be here
+                if nbhd_col.contains(&number) {
+                    continue;
+                }
+
+                if nbhd_row.contains(&number) {
+                    continue;
+                }
+
+                if nbhd_box_vals.contains(&number) {
+                    continue;
+                }
+
+                println!("Neighbourhoods for {:?}", cell.coordinate);
+                println!("    Row: {:?}", nbhd_row);
+                println!("    Col: {:?}", nbhd_col);
+                println!("    Box: {:?}", nbhd_box_vals);
+
+                // TODO Complete the by value check with the new and improved Box Struct
+
+            }
+        }
+
+        changed
+    }
+
+    pub fn collect_values(&self, vector: Vec<SudokuCell>) -> Vec<u32> {
+        vector.iter().map(|x| x.value_as_int).collect()
+    }
 }
 
 // Compares two cell coordinates and returns true if they match
@@ -1048,7 +1255,7 @@ impl Sudoku {
 }
 
 impl SudokusCollection {
-    pub fn new(collection: [Sudoku; SUDOKU_CT]) -> SudokusCollection {
+    pub fn new(collection: Vec<Sudoku>) -> SudokusCollection {
         SudokusCollection {
             sudokus: collection,
             solved: false
@@ -1136,9 +1343,7 @@ fn main() -> std::io::Result<()> {
 // Parses a text file into an array of sudokus to solve
 fn get_sudokus(file: &File) -> SudokusCollection {
 
-    let mut sudokus = [
-        Sudoku::new(0); SUDOKU_CT
-    ];
+    let mut sudokus = Vec::new();
 
     let mut reader = BufReader::new(file);
     let mut true_line = 0; // Tracks the actual line of the file
@@ -1146,14 +1351,22 @@ fn get_sudokus(file: &File) -> SudokusCollection {
     let mut sudoku_num: usize = 0; // Tracks the current sudoku
 
     for line in reader.lines() {
-        if true_line > (SUDOKU_CT * 10)-1 {
+
+        // For skipping earlier sudokus
+        if true_line < (10 * SUDOKU_START) - 10 {
+            println!("Skip line {:?}", line);
+            true_line += 1;
+            continue;
+        }
+
+        if true_line > SUDOKU_END {
             println!("All done!");
-            return SudokusCollection::new(sudokus)
+            return SudokusCollection::new(sudokus);
         }
 
         let line_as_string = line.unwrap();
 
-        if line_as_string.starts_with('G') && true_line > 0 {
+        if line_as_string.starts_with('G') && true_line >= SUDOKU_START * 10 {
             println!("Reset line ct");
             inner_line = 0;
             sudoku_num += 1;
@@ -1163,7 +1376,8 @@ fn get_sudokus(file: &File) -> SudokusCollection {
         true_line += 1;
 
         if inner_line == 0 {
-            println!("Skip header");
+            println!("New Sudoku!");
+            sudokus.push(Sudoku::new((sudoku_num) as u32));
             inner_line += 1;
             continue;
         }
@@ -1181,7 +1395,6 @@ fn get_sudokus(file: &File) -> SudokusCollection {
                 sudokus[sudoku_num].grid.inc_val_by_int(val);
             }
         }
-        sudokus[sudoku_num].name = (sudoku_num + 1) as u32;
 
         inner_line += 1;
     }
