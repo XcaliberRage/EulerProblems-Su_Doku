@@ -993,8 +993,6 @@ impl SudokuGrid {
                 }
             }
 
-            // TODO Sibling sets can exist even if _other_ values are possible in those cells (as long as they don't match)
-                
             for val in poss_vals.iter() {
                 println!("    Setting {} impossible in {},{}", val.1, x, y);
 
@@ -1015,6 +1013,120 @@ impl SudokuGrid {
             } else {
                 println!(" {:?}", self.grid[cell.coordinate.y as usize][cell.coordinate.x as usize].get_possible());
             }
+        }
+    }
+
+    // TODO this is gonna be nasty to bugfix
+
+    // In a given neighbourhood, if a set of possible values can only go into a number of cells equal to the number of possibles
+    // then no other values can go in these cells
+    pub fn find_exclusives(&mut self, nbhd: Vec<SudokuCell>) {
+
+        // Take each number and note each position in the array that that number _can_ go
+        let mut all_possible = Vec::new();
+        for cell in nbhd.iter() {
+            let poss = cell.get_possible();
+            for value in  poss.iter() {
+                if all_possible.contains(value) {
+                    continue;
+                }
+
+                all_possible.push(*value);
+            }
+        }
+
+        all_possible.sort();
+
+        let mut all_poss_array = HashMap::new();
+
+        for value in all_possible.iter() {
+            let mut poss_coords = Vec::new();
+            for cell in nbhd.iter() {
+                if cell.get_possible().contains(value) {
+                    poss_coords.push(cell.coordinate);
+                }
+            }
+            if poss_coords.len() >= 2 {
+                all_poss_array.insert(*value, poss_coords);
+            }
+
+        }
+
+        // Now we look to see if any values are limited to only the same cells as some other values
+        // If so, the number of values that share these cell limits must be the same as the number of cells they are limited to
+        // i.e. 2 values need to be limited to 2 possible cells in the neighbourhood
+        let mut excludes = look_for_matches(all_poss_array, Vec::new());
+
+        let nbhd_poss = self.return_poss(nbhd.clone());
+        for set in excludes.clone() {
+            // Look in each cell, if it could contain all of the values in this set, kill any values that are not in this set
+            for cell in nbhd_poss.iter() {
+                let cell_set = cell.get_possible();
+                if set.iter().all(|e| cell_set.contains(e)) {
+
+                    for value in cell_set.clone() {
+                        if set.contains(&value) {
+                            continue;
+                        }
+
+                        self.grid[cell.coordinate.y as usize][cell.coordinate.x as usize].set_impossible(value);
+                    }
+                }
+            }
+        }
+
+        // Return a set of vectors,
+        // each one is a group of values that are limited to a number of cells that is not greater than the number of values in the group
+        // This function is recursive
+        fn look_for_matches(all_poss_array: HashMap<u32, Vec<Coordinate>>, mut matches: Vec<Vec<u32>>) ->Vec<Vec<u32>> {
+
+            //If we're looking at the last value in the list, just return cause we're done
+            // This is the escape
+            if all_poss_array.len() == 1 {
+                return matches
+            }
+
+            // Take one of the values from the Hash
+            let mut new_hash = all_poss_array.clone();
+            let mut k_1 = u32::from(all_poss_array
+                .keys()
+                .take(1)
+                .collect());
+
+            new_hash.remove(&k_1);
+
+
+            // I'll shove it in matches, if it's invalid later I can remove it
+            matches.push(vec![k_1]);
+
+            let mut matching = false;
+            let index = matches.iter().rposition(|c| c.contains(&k_1)).unwrap();
+            for (k_2, v_2) in new_hash {
+                // Gets us the index we care about
+
+
+                // Now we compare coordinates
+                if v_2 == all_poss_array[&k_1] {
+                    matching == true;
+                    // If you find a match, make sure you didn't already put this second value in here, if not, put it in
+                    if matches[index].contains(&k_2) {
+                        matches[index].push(k_2);
+                    }
+
+                    // If the number of values exceeds the number of cells that these values can go in, just forget it and move on
+                    if matches[index].len() > all_poss_array[&k_1].len() {
+                        matches.remove(index);
+                        break;
+                    }
+                }
+            }
+
+            if !matching {
+                // If we never found a match, then obviously this number doesn't have one so we take it back out
+                matches.remove(matches.iter().rposition(|e| e == matches.iter().last().unwrap()).unwrap());
+            }
+
+            look_for_matches(new_hash, matches)
         }
     }
 
@@ -1106,6 +1218,15 @@ impl SudokuGrid {
                 println!("Matching siblings");
                 self.match_possibles();
             }
+
+            // Now we look to see if a pair can only go in two cells in a neighbourhood
+            // if so, eliminate the other possibilities from that cell
+            for i in 0..GRID_SIZE_I {
+                self.find_exclusives(self.get_box(SudokuBox::new(SudokuBox::x_finder(i), SudokuBox::y_finder(i), *self)));
+                self.find_exclusives(self.get_row(i));
+                self.find_exclusives(self.get_col(i));
+            }
+
 
             if self.check_each() {
                 println!("    Took {} passes.", pass_ct);
